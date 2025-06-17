@@ -1,122 +1,79 @@
-# TruAlo
-Truck Allocation Calculator 
-// tru-alo/pages/index.tsx
-
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+// pages/index.tsx
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { loadStripe } from '@stripe/stripe-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const stripePromise = loadStripe('pk_test_xxx'); // Replace with actual public key
+
 export default function Home() {
-  const [user, setUser] = useState(null);
-  const [calculation, setCalculation] = useState({
-    commodityUsage: 0,
-    truckCapacity: 1,
-    buffer: 0.1,
-    travelDistance: 0,
-  });
-  const [result, setResult] = useState<number | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [commodityUsage, setCommodityUsage] = useState(0);
+  const [mileage, setMileage] = useState(0);
+  const [buffer, setBuffer] = useState(0.1);
+  const [truckCapacity, setTruckCapacity] = useState(1);
+  const [truckTime, setTruckTime] = useState(0);
+  const [totalTrucks, setTotalTrucks] = useState(0);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) {
-        setUser(data.user);
-      }
-    });
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   }, []);
 
-  const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email: prompt("Enter your email") || "",
-    });
-    if (error) alert("Login error: " + error.message);
-  };
+  useEffect(() => {
+    const baseTime = 1.42 * mileage;
+    setTruckTime(baseTime);
+    const adjustedUsage = commodityUsage * (1 + buffer);
+    const trucks = adjustedUsage / (truckCapacity / baseTime);
+    setTotalTrucks(Math.ceil(trucks));
+  }, [commodityUsage, mileage, buffer, truckCapacity]);
 
-  const calculateTrucks = () => {
-    const usageWithBuffer = calculation.commodityUsage * (1 + calculation.buffer);
-    const travelTime = 1.42 * calculation.travelDistance;
-    const trucksNeeded = usageWithBuffer / (calculation.truckCapacity / travelTime);
-    setResult(Math.ceil(trucksNeeded));
-  };
-
-  const handleSave = async () => {
-    if (!user) return alert("Please log in first.");
-    await supabase.from("calculations").insert({
+  async function saveCalculation() {
+    if (!user) return;
+    await supabase.from('calculations').insert({
       user_id: user.id,
-      data: calculation,
-      result,
+      commodity_usage: commodityUsage,
+      mileage,
+      truck_capacity: truckCapacity,
+      total_trucks: totalTrucks,
     });
-    alert("Calculation saved!");
-  };
+  }
 
   return (
-    <main className="p-6 max-w-xl mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">TruAlo - Truck Allocation Calculator</h1>
-
-      {!user ? (
-        <button onClick={handleLogin} className="bg-blue-600 text-white px-4 py-2 rounded">
-          Log in via Email
-        </button>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <label>Commodity Usage (tons): </label>
-            <input
-              type="number"
-              value={calculation.commodityUsage}
-              onChange={(e) =>
-                setCalculation({ ...calculation, commodityUsage: Number(e.target.value) })
-              }
-              className="border p-2 rounded"
-            />
-          </div>
-
-          <div>
-            <label>Truck Capacity (tons): </label>
-            <input
-              type="number"
-              value={calculation.truckCapacity}
-              onChange={(e) =>
-                setCalculation({ ...calculation, truckCapacity: Number(e.target.value) })
-              }
-              className="border p-2 rounded"
-            />
-          </div>
-
-          <div>
-            <label>Travel Distance (miles): </label>
-            <input
-              type="number"
-              value={calculation.travelDistance}
-              onChange={(e) =>
-                setCalculation({ ...calculation, travelDistance: Number(e.target.value) })
-              }
-              className="border p-2 rounded"
-            />
-          </div>
-
-          <button
-            onClick={calculateTrucks}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Calculate Trucks
-          </button>
-
-          {result !== null && (
-            <div className="text-lg font-semibold">Total Trucks Needed: {result}</div>
-          )}
-
-          <button
-            onClick={handleSave}
-            className="bg-gray-800 text-white px-4 py-2 rounded"
-          >
-            Save Calculation
-          </button>
-        </div>
-      )}
+    <main className="p-4">
+      <h1 className="text-2xl font-bold mb-4">TruAlo Truck Calculator</h1>
+      <input
+        type="number"
+        placeholder="Commodity Usage"
+        value={commodityUsage}
+        onChange={(e) => setCommodityUsage(parseFloat(e.target.value))}
+        className="block border p-2 mb-2"
+      />
+      <input
+        type="number"
+        placeholder="Mileage"
+        value={mileage}
+        onChange={(e) => setMileage(parseFloat(e.target.value))}
+        className="block border p-2 mb-2"
+      />
+      <input
+        type="number"
+        placeholder="Truck Capacity"
+        value={truckCapacity}
+        onChange={(e) => setTruckCapacity(parseFloat(e.target.value))}
+        className="block border p-2 mb-2"
+      />
+      <p className="mb-2">One-way Travel Time: {truckTime.toFixed(2)} hrs</p>
+      <p className="font-bold">Total Trucks Needed: {totalTrucks}</p>
+      <button
+        className="bg-blue-500 text-white px-4 py-2 mt-4"
+        onClick={saveCalculation}
+      >
+        Save Calculation
+      </button>
     </main>
   );
 }
