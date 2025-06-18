@@ -1,0 +1,90 @@
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { loadStripe } from '@stripe/stripe-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+
+export default function Home() {
+  const [user, setUser] = useState(null);
+  const [commodityUsage, setCommodityUsage] = useState(0);
+  const [mileage, setMileage] = useState(0);
+  const [buffer, setBuffer] = useState(0.10);
+  const [trucks, setTrucks] = useState(0);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+  }, []);
+
+  const calculateTrucks = () => {
+    const usageWithBuffer = commodityUsage * (1 + buffer);
+    const travelTime = 1.42 * mileage;
+    const result = usageWithBuffer / travelTime;
+    setTrucks(Math.ceil(result));
+  };
+
+  const saveCalculation = async () => {
+    if (!user) return;
+    await supabase.from('calculations').insert({
+      user_id: user.id,
+      usage: commodityUsage,
+      mileage,
+      trucks
+    });
+  };
+
+  const handleLogin = async () => {
+    const email = prompt('Enter your email');
+    if (!email) return;
+    await supabase.auth.signInWithOtp({ email });
+    alert('Check your email for the login link!');
+  };
+
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="text-2xl font-bold mb-4">TruAlo Truck Calculator</h1>
+
+      {!user ? (
+        <button onClick={handleLogin} className="bg-blue-600 text-white px-4 py-2 rounded mb-4">
+          Sign In with Email
+        </button>
+      ) : (
+        <div>
+          <label className="block mb-2">Commodity Usage (units)</label>
+          <input
+            type="number"
+            className="w-full p-2 border mb-4"
+            value={commodityUsage}
+            onChange={(e) => setCommodityUsage(Number(e.target.value))}
+          />
+
+          <label className="block mb-2">Mileage (one-way)</label>
+          <input
+            type="number"
+            className="w-full p-2 border mb-4"
+            value={mileage}
+            onChange={(e) => setMileage(Number(e.target.value))}
+          />
+
+          <button onClick={calculateTrucks} className="bg-green-600 text-white px-4 py-2 rounded mr-2">
+            Calculate
+          </button>
+
+          <button onClick={saveCalculation} className="bg-gray-700 text-white px-4 py-2 rounded">
+            Save Calculation
+          </button>
+
+          {trucks > 0 && (
+            <p className="mt-4 text-lg">Estimated Trucks Needed: <strong>{trucks}</strong></p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
